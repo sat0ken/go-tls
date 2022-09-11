@@ -6,13 +6,12 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
+	"crypto/tls"
 	"crypto/x509"
 	"encoding/binary"
 	"fmt"
 	"golang.org/x/crypto/curve25519"
 	"log"
-	"syscall"
-	"time"
 )
 
 func NewTLSRecordHeader(ctype string, length uint16) []byte {
@@ -149,6 +148,7 @@ func (*ClientKeyExchange) NewClientKeyECDHAExchange(clientPublicKey []byte) (cli
 		PubkeyLength: []byte{0x20},
 		Pubkey:       clientPublicKey,
 	}
+	fmt.Printf("Client Public key is %x\n", clientPublicKey)
 
 	// Lengthをセット
 	clientKey.Length = UintTo3byte(uint32(toByteLen(clientKey) - 4))
@@ -495,157 +495,29 @@ func ParseTLSPacket(packet []byte) ([]TLSProtocol, []byte) {
 	return protocols, protocolsByte
 }
 
-func starFromClientHello(sendfd int, sendInfo TCPIP) error {
-	clienthelloPacket := NewTCPIP(sendInfo)
-	destIp := Iptobyte(sendInfo.DestIP)
+func HandleServerHandshake(tlsproto []TLSProtocol, tlsinfo TLSInfo) TLSInfo {
 
-	// Client Helloを送る
-	addr := SetSockAddrInet4(destIp, int(sendInfo.DestPort))
-	SendIPv4Socket(sendfd, clienthelloPacket, addr)
-	fmt.Printf("Send TLS Client Hello to : %s\n", sendInfo.DestIP)
-
-	var recvtcp TCPHeader
-	var ack TCPIP
-	var tlsProto []TLSProtocol
-	var tlsBytes []byte
-	var tcpBytes []byte
-
-	_ = tlsBytes
-
-	var handshake_messages []byte
-	handshake_messages = append(handshake_messages, sendInfo.Data[5:]...)
-
-	for {
-		recvBuf := make([]byte, 65535)
-		_, _, err := syscall.Recvfrom(sendfd, recvBuf, 0)
-		if err != nil {
-			log.Fatalf("read err : %v", err)
-		}
-		// IPヘッダをUnpackする
-		ip := parseIP(recvBuf[0:20])
-		if bytes.Equal(ip.Protocol, []byte{0x06}) && bytes.Equal(ip.SourceIPAddr, destIp) {
-			// IPヘッダを省いて20byte目からのTCPパケットをパースする
-			recvtcp = parseTCP(recvBuf[20:])
-
-			if recvtcp.ControlFlags[0] == ACK && bytes.Equal(recvtcp.SourcePort, UintTo2byte(sendInfo.DestPort)) {
-				fmt.Printf("Recv ACK from %s\n", sendInfo.DestIP)
-				time.Sleep(10 * time.Millisecond)
-			} else if recvtcp.ControlFlags[0] == PSHACK && bytes.Equal(recvtcp.SourcePort, UintTo2byte(sendInfo.DestPort)) {
-				fmt.Printf("Recv PSHACK from %s\n", sendInfo.DestIP)
-				//fmt.Printf("TCP Data : %s\n", printByteArr(recvtcp.TCPData))
-
-				tcpLength := uint32(sumByteArr(ip.TotalPacketLength)) - 20
-				tcpLength = tcpLength - uint32(recvtcp.HeaderLength[0]>>4<<2)
-
-				tcpBytes = append(tcpBytes, recvtcp.TCPData[0:tcpLength]...)
-				//fmt.Printf("PSHACK TCP Data : %s\n", printByteArr(tlsbyte))
-
-				tlsProto, tlsBytes = ParseTLSPacket(tcpBytes)
-				//pp.Println(tlsProto)
-
-				time.Sleep(10 * time.Millisecond)
-
-				ack = TCPIP{
-					DestIP:    sendInfo.DestIP,
-					DestPort:  sendInfo.DestPort,
-					TcpFlag:   "ACK",
-					SeqNumber: recvtcp.AcknowlegeNumber,
-					AckNumber: calcSequenceNumber(recvtcp.SequenceNumber, tcpLength),
-				}
-				ackPacket := NewTCPIP(ack)
-				// ServerHelloを受信したことに対してACKを送る
-				SendIPv4Socket(sendfd, ackPacket, addr)
-
-				for _, v := range tlsProto {
-					switch v.HandshakeProtocol.(type) {
-					case ServerHelloDone:
-						fmt.Printf("Recv PSHACK ServerHello,Certificate,ServerHelloDone from %s\n", sendInfo.DestIP)
-						//break
-					}
-				}
-				break
-			}
-		}
-	}
-
-	//handshake_messages = append(handshake_messages, tlsBytes...)
-	//_, err := sendClientKeyExchangeToFinish(sendfd, TCPandServerHello{
-	//	ACKFromClient:      ack,
-	//	TLSProcotocol:      tlsProto,
-	//	TLSProcotocolBytes: handshake_messages,
-	//})
-	//if err != nil {
-	//	log.Fatal(err)
-	//}
-	return nil
-}
-
-/*func sendClientKeyExchangeToFinish(sendfd int, serverhello TCPandServerHello) ([]byte, error) {
-	var serverRandom []byte
-	var pubkey *rsa.PublicKey
-
-	for _, v := range serverhello.TLSProcotocol {
+	for _, v := range tlsproto {
 		switch proto := v.HandshakeProtocol.(type) {
 		case ServerHello:
-			serverRandom = proto.Random
+			// ServerHelloからrandomを取り出す
+			tlsinfo.MasterSecretInfo.ServerRandom = proto.Random
 		case ServerCertificate:
 			_, ok := proto.Certificates[0].PublicKey.(*rsa.PublicKey)
 			if !ok {
 				log.Fatalf("cast pubkey err : %v\n", ok)
 			}
-			pubkey = proto.Certificates[0].PublicKey.(*rsa.PublicKey)
+			// Certificateからサーバの公開鍵を取り出す
+			tlsinfo.ServerPublicKey = proto.Certificates[0].PublicKey.(*rsa.PublicKey)
+		case ServerKeyExchange:
+			if proto.ECDiffieHellmanServerParams.NamedCurve[1] == CurveIDx25519 {
+				// サーバの公開鍵でECDHEの鍵交換を行う
+				tlsinfo.ECDHEKeys = GenrateECDHESharedKey(proto.ECDiffieHellmanServerParams.Pubkey)
+				// premaster secretに共通鍵をセット
+				tlsinfo.MasterSecretInfo.PreMasterSecret = tlsinfo.ECDHEKeys.SharedKey
+			}
 		}
 	}
 
-	var clientKeyExchange ClientKeyExchange
-	clientKeyExchangeBytes, premasterBytes := clientKeyExchange.NewClientKeyExchange(pubkey)
-	serverhello.TLSProcotocolBytes = append(serverhello.TLSProcotocolBytes, clientKeyExchangeBytes[5:]...)
-
-	changeCipher := NewChangeCipherSpec()
-
-	masterBytes := MasterSecretInfo{
-		PreMasterSecret: premasterBytes,
-		ServerRandom:    serverRandom,
-		ClientRandom:    serverhello.ClientHelloRandom,
-	}
-
-	verifyData, keyblock, _ := createVerifyData(masterBytes, CLientFinishedLabel, serverhello.TLSProcotocolBytes)
-	// finished messageを作成する、先頭にヘッダを入れてからverify_dataを入れる
-	// 作成された16byteがplaintextとなり暗号化する
-	finMessage := []byte{HandshakeTypeFinished}
-	finMessage = append(finMessage, UintTo3byte(uint32(len(verifyData)))...)
-	finMessage = append(finMessage, verifyData...)
-	fmt.Printf("finMessage : %x\n", finMessage)
-
-	rheader := NewTLSRecordHeader("Handshake", uint16(len(finMessage)))
-	//encryptFin := encryptMessage(rheader, keyblock.ClientWriteIV, finMessage, keyblock.ClientWriteKey)
-
-	var all []byte
-	all = append(all, clientKeyExchangeBytes...)
-	all = append(all, changeCipher...)
-	//all = append(all, encryptFin...)
-
-	fin := TCPIP{
-		DestIP:    LOCALIP,
-		DestPort:  LOCALPORT,
-		TcpFlag:   "PSHACK",
-		SeqNumber: serverhello.ACKFromClient.SeqNumber,
-		AckNumber: serverhello.ACKFromClient.AckNumber,
-		Data:      all,
-	}
-
-	finished := NewTCPIP(fin)
-
-	destIp := Iptobyte(fin.DestIP)
-
-	// Finished message を送る
-	addr := setSockAddrInet4(destIp, LOCALPORT)
-	err := SendIPv4Socket(sendfd, finished, addr)
-	if err != nil {
-		return nil, fmt.Errorf("send PSHACK packet err : %v", err)
-	}
-	fmt.Printf("Send Finished message to : %s\n", LOCALIP)
-
-	return all, nil
+	return tlsinfo
 }
-*/

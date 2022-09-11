@@ -2,17 +2,17 @@ package main
 
 import (
 	"bufio"
-	"crypto/hacktls"
+	"crypto/tls"
 	"fmt"
+	"gotls"
 	"log"
 	"net"
 	"os"
-	"tcpip/debug/utils"
 )
 
 // https://gist.github.com/denji/12b3a568f092ab951456
 func main() {
-	cert, err := tls.LoadX509KeyPair("./my-tls.pem", "./my-tls-key.pem")
+	cert, err := tls.LoadX509KeyPair("./pems/my-tls.pem", "./pems/my-tls-key.pem")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -20,10 +20,10 @@ func main() {
 	// https://pkg.go.dev/crypto/tls#Config
 	config := &tls.Config{
 		Certificates: []tls.Certificate{cert},
-		Rand:         utils.ZeroSource{}, // for example only; don't do this.
-		MinVersion:   tls.VersionTLS13,
+		Rand:         gotls.ZeroSource{}, // for example only; don't do this.
+		MinVersion:   tls.VersionTLS12,
 		MaxVersion:   tls.VersionTLS13,
-		CipherSuites: []uint16{tls.TLS_RSA_WITH_AES_128_GCM_SHA256},
+		//CipherSuites: []uint16{tls.TLS_RSA_WITH_AES_128_GCM_SHA256},
 		//CurvePreferences: []tls.CurveID{tls.X25519},
 		KeyLogWriter: w,
 	}
@@ -40,7 +40,6 @@ func main() {
 			continue
 		}
 		log.Printf("Client From : %v\n", conn.RemoteAddr())
-		//tlsconn := tls.Server(conn, config)
 		//log.Printf("State is : %v\n", tlsconn.ConnectionState())
 		go handleConnection(conn)
 	}

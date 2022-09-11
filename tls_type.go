@@ -1,6 +1,9 @@
 package gotls
 
-import "crypto/x509"
+import (
+	"crypto/rsa"
+	"crypto/x509"
+)
 
 const (
 	ContentTypeHandShake             = 0x16
@@ -42,7 +45,7 @@ var ServerapTraffic = []byte(`s ap traffic`)
 var FinishedLabel = []byte(`finished`)
 
 // 4.4.3. Certificate Verify
-//var str0x20x64 = []byte(`20202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020`)
+// var str0x20x64 = []byte(`20202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020`)
 var serverCertificateContextString = []byte(`TLS 1.3, server CertificateVerify`)
 
 // https://www.ipa.go.jp/security/rfc/RFC5246-AAJA.html
@@ -159,13 +162,6 @@ type TLSProtocol struct {
 	HandshakeProtocol interface{}
 }
 
-type TCPandServerHello struct {
-	ACKFromClient      TCPIP
-	TLSProcotocol      []TLSProtocol
-	TLSProcotocolBytes []byte
-	ClientHelloRandom  []byte
-}
-
 type MasterSecretInfo struct {
 	MasterSecret    []byte
 	PreMasterSecret []byte
@@ -187,6 +183,7 @@ type TLSInfo struct {
 	KeyBlock           KeyBlock
 	KeyBlockTLS13      KeyBlockTLS13
 	Handshakemessages  []byte
+	ServerPublicKey    *rsa.PublicKey
 	ServerHandshakeSeq int
 	ServerAppSeq       int
 	ClientSequenceNum  int

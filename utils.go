@@ -155,9 +155,9 @@ func WriteHash(message []byte) []byte {
 }
 
 // zeroSource is an io.Reader that returns an unlimited number of zero bytes.
-type zeroSource struct{}
+type ZeroSource struct{}
 
-func (zeroSource) Read(b []byte) (n int, err error) {
+func (ZeroSource) Read(b []byte) (n int, err error) {
 	for i := range b {
 		b[i] = 0
 	}
