@@ -3,11 +3,10 @@ package main
 import (
 	"crypto/tls"
 	"fmt"
+	"gotls"
 	"log"
 	"net/http"
 	"os"
-
-	"tcpip/debug/utils"
 )
 
 // https://github.com/denji/golang-tls
@@ -26,7 +25,7 @@ func main() {
 	server := &http.Server{
 		Addr: ":10443",
 		TLSConfig: &tls.Config{
-			Rand:         utils.ZeroSource{}, // for example only; don't do this.
+			Rand:         gotls.ZeroSource{}, // for example only; don't do this.
 			MinVersion:   tls.VersionTLS12,
 			MaxVersion:   tls.VersionTLS12,
 			KeyLogWriter: w,

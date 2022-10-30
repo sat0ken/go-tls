@@ -3,12 +3,11 @@ package main
 import (
 	"crypto/tls"
 	"fmt"
+	"gotls"
 	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
-
-	"tcpip/debug/utils"
 )
 
 func main() {
@@ -18,7 +17,7 @@ func main() {
 		TLSClientConfig: &tls.Config{
 			MinVersion:   tls.VersionTLS13,
 			MaxVersion:   tls.VersionTLS13,
-			Rand:         utils.ZeroSource{},
+			Rand:         gotls.ZeroSource{},
 			KeyLogWriter: w,
 			CipherSuites: []uint16{tls.TLS_RSA_WITH_AES_128_GCM_SHA256},
 		},
