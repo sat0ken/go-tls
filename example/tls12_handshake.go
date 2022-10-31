@@ -14,7 +14,7 @@ func main() {
 	var tlsinfo gotls.TLSInfo
 	var hello gotls.ClientHello
 	var hellobyte []byte
-	tlsinfo, hellobyte = hello.NewClientHello(gotls.TLS1_2, false, gotls.UintTo2byte(tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256))
+	tlsinfo, hellobyte = hello.NewClientHello(gotls.TLS1_2, false, gotls.UintTo2byte(tls.TLS_RSA_WITH_AES_128_GCM_SHA256))
 
 	fmt.Printf("client random : %x\n", tlsinfo.MasterSecretInfo.ClientRandom)
 
@@ -41,9 +41,9 @@ func main() {
 	var clientKeyExchange gotls.ClientKeyExchange
 	var clientKeyExchangeBytes []byte
 	// RSA鍵交換のとき
-	//clientKeyExchangeBytes, tlsinfo.MasterSecretInfo.PreMasterSecret = clientKeyExchange.NewClientKeyRSAExchange(pubkey)
+	clientKeyExchangeBytes, tlsinfo.MasterSecretInfo.PreMasterSecret = clientKeyExchange.NewClientKeyRSAExchange(tlsinfo.ServerPublicKey)
 	// 生成した公開鍵をClientKeyExchangeにセットする
-	clientKeyExchangeBytes = clientKeyExchange.NewClientKeyECDHAExchange(tlsinfo.ECDHEKeys.PublicKey)
+	//clientKeyExchangeBytes = clientKeyExchange.NewClientKeyECDHAExchange(tlsinfo.ECDHEKeys.PublicKey)
 	tlsinfo.Handshakemessages = append(tlsinfo.Handshakemessages, clientKeyExchangeBytes[5:]...)
 
 	// ChangeCipherSpecメッセージを作る

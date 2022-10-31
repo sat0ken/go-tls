@@ -25,14 +25,15 @@ func main() {
 	server := &http.Server{
 		Addr: ":10443",
 		TLSConfig: &tls.Config{
-			Rand:         gotls.ZeroSource{}, // for example only; don't do this.
-			MinVersion:   tls.VersionTLS12,
-			MaxVersion:   tls.VersionTLS12,
+			Rand:       gotls.ZeroSource{}, // for example only; don't do this.
+			MinVersion: tls.VersionTLS12,
+			MaxVersion: tls.VersionTLS12,
+			//CipherSuites: []uint16{tls.TLS_RSA_WITH_AES_128_GCM_SHA256},
 			KeyLogWriter: w,
 		},
 	}
 
-	err := server.ListenAndServeTLS("./my-tls.pem", "./my-tls-key.pem")
+	err := server.ListenAndServeTLS("./pems/my-tls.pem", "./pems/my-tls-key.pem")
 	if err != nil {
 		log.Fatal(err)
 	}
